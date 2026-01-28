@@ -12,6 +12,7 @@ import (
 func main() {
 	st := store.New()
 	stockHandler := handlers.NewStockHandler(st)
+	reservationHandler := handlers.NewReservationHandler(st)
 
 	mux := http.NewServeMux()
 
@@ -23,6 +24,8 @@ func main() {
 
 	mux.HandleFunc("GET /v1/stock/{sku}", stockHandler.GetStock)
 	mux.HandleFunc("PUT /v1/stock/{sku}", stockHandler.UpsertStock)
+	mux.HandleFunc("POST /v1/reservations", reservationHandler.Create)
+	mux.HandleFunc("DELETE /v1/reservations/{id}", reservationHandler.Release)
 
 	addr := ":" + envOr("PORT", "8080")
 	log.Printf("inventory-service listening on %s", addr)

@@ -1,16 +1,21 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/shipit-ai-demo-org/inventory-service/internal/events"
 	"github.com/shipit-ai-demo-org/inventory-service/internal/handlers"
 	"github.com/shipit-ai-demo-org/inventory-service/internal/store"
 )
 
 func main() {
 	st := store.New()
+
+	consumer := events.NewConsumer(st, envOr("BROKER_BRIDGE_URL", "http://broker-bridge.cargocloud.internal"))
+	go consumer.Run(context.Background())
 	stockHandler := handlers.NewStockHandler(st)
 	reservationHandler := handlers.NewReservationHandler(st)
 

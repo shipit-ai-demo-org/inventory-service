@@ -11,6 +11,7 @@ import (
 var (
 	ErrUnknownSKU         = errors.New("unknown sku")
 	ErrUnknownReservation = errors.New("unknown reservation")
+	ErrInsufficientStock  = errors.New("insufficient available stock")
 )
 
 // StockRecord tracks on-hand and reserved quantities for a single SKU at a
@@ -77,6 +78,12 @@ func (s *Store) Reserve(orderID, sku string, qty int, ttl time.Duration) (Reserv
 	rec, ok := s.stock[sku]
 	if !ok {
 		return Reservation{}, ErrUnknownSKU
+	}
+
+	// Never allow reserved to exceed on-hand: two pickers racing for the
+	// last unit must not both win (INV-841).
+	if available := rec.OnHand - rec.Reserved; qty > available {
+		return Reservation{}, ErrInsufficientStock
 	}
 
 	res := &Reservation{

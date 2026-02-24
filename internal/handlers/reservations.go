@@ -44,11 +44,14 @@ func (h *ReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.store.Reserve(body.OrderID, body.SKU, body.Quantity, ttl)
 	if err != nil {
-		if errors.Is(err, store.ErrUnknownSKU) {
+		switch {
+		case errors.Is(err, store.ErrUnknownSKU):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown_sku"})
-			return
+		case errors.Is(err, store.ErrInsufficientStock):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "insufficient_stock"})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
 		return
 	}
 	writeJSON(w, http.StatusCreated, res)

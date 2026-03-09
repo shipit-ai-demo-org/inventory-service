@@ -21,7 +21,10 @@ type StockRecord struct {
 	Warehouse string    `json:"warehouse"`
 	OnHand    int       `json:"onHand"`
 	Reserved  int       `json:"reserved"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	// ReorderPoint is the available-stock threshold below which the SKU is
+	// flagged for replenishment. Zero means replenishment tracking is off.
+	ReorderPoint int       `json:"reorderPoint"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 // Reservation is a soft hold against stock, created when orders-api emits
@@ -113,6 +116,33 @@ func (s *Store) Release(reservationID string) error {
 	}
 	delete(s.reservations, reservationID)
 	return nil
+}
+
+// SetReorderPoint configures the replenishment threshold for a SKU.
+func (s *Store) SetReorderPoint(sku string, point int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.stock[sku]
+	if !ok {
+		return ErrUnknownSKU
+	}
+	rec.ReorderPoint = point
+	rec.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+// ReplenishmentCandidates returns SKUs whose available stock has fallen below
+// their reorder point. Consumed by the nightly replenishment planner.
+func (s *Store) ReplenishmentCandidates() []StockRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []StockRecord
+	for _, rec := range s.stock {
+		if rec.ReorderPoint > 0 && rec.OnHand-rec.Reserved < rec.ReorderPoint {
+			out = append(out, *rec)
+		}
+	}
+	return out
 }
 
 func newID() string {

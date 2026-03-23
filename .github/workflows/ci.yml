@@ -1,0 +1,26 @@
+name: CI
+
+on: [push, workflow_dispatch]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify module definition
+        run: |
+          test -f go.mod
+          grep -q "module github.com/shipit-ai-demo-org/inventory-service" go.mod
+          grep -q "go 1.22" go.mod
+
+      - name: Verify package layout
+        run: |
+          test -f main.go
+          test -f internal/store/store.go
+          test -f internal/handlers/stock.go
+          test -f internal/handlers/reservations.go
+
+      - name: Verify event consumer wiring
+        run: |
+          grep -q "order.created" internal/events/consumer.go

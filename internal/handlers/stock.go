@@ -1,12 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/shipit-ai-demo-org/inventory-service/internal/store"
 )
+
+// storeTimeout caps how long a request may wait on a store operation, so a
+// contended store cannot pin handler goroutines past the client's patience.
+const storeTimeout = 2 * time.Second
 
 type StockHandler struct {
 	store *store.Store
@@ -19,7 +25,9 @@ func NewStockHandler(s *store.Store) *StockHandler {
 // GetStock handles GET /v1/stock/{sku}.
 func (h *StockHandler) GetStock(w http.ResponseWriter, r *http.Request) {
 	sku := r.PathValue("sku")
-	rec, err := h.store.GetStock(sku)
+	ctx, cancel := context.WithTimeout(r.Context(), storeTimeout)
+	defer cancel()
+	rec, err := h.store.GetStock(ctx, sku)
 	if err != nil {
 		if errors.Is(err, store.ErrUnknownSKU) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown_sku"})
@@ -49,7 +57,13 @@ func (h *StockHandler) UpsertStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rec := h.store.UpsertStock(sku, body.Warehouse, body.OnHand)
+	ctx, cancel := context.WithTimeout(r.Context(), storeTimeout)
+	defer cancel()
+	rec, err := h.store.UpsertStock(ctx, sku, body.Warehouse, body.OnHand)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "store_timeout"})
+		return
+	}
 	writeJSON(w, http.StatusOK, rec)
 }
 

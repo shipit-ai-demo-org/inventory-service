@@ -78,6 +78,10 @@ func (s *Store) Reserve(orderID, sku string, qty int, ttl time.Duration) (Reserv
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Expired holds were inflating Reserved and starving new orders
+	// (INV-902): sweep them before computing availability.
+	s.sweepExpiredLocked(time.Now().UTC())
+
 	rec, ok := s.stock[sku]
 	if !ok {
 		return Reservation{}, ErrUnknownSKU
@@ -116,6 +120,19 @@ func (s *Store) Release(reservationID string) error {
 	}
 	delete(s.reservations, reservationID)
 	return nil
+}
+
+// sweepExpiredLocked releases holds past their TTL. Caller must hold s.mu.
+func (s *Store) sweepExpiredLocked(now time.Time) {
+	for id, res := range s.reservations {
+		if now.After(res.ExpiresAt) {
+			if rec, ok := s.stock[res.SKU]; ok {
+				rec.Reserved -= res.Quantity
+				rec.UpdatedAt = now
+			}
+			delete(s.reservations, id)
+		}
+	}
 }
 
 // SetReorderPoint configures the replenishment threshold for a SKU.

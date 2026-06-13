@@ -58,7 +58,7 @@ func (c *Consumer) Run(ctx context.Context) {
 		if !ok {
 			continue
 		}
-		c.handle(evt)
+		c.handle(ctx, evt)
 	}
 }
 
@@ -84,11 +84,11 @@ func (c *Consumer) poll(ctx context.Context) (OrderEvent, bool, error) {
 	return evt, true, nil
 }
 
-func (c *Consumer) handle(evt OrderEvent) {
+func (c *Consumer) handle(ctx context.Context, evt OrderEvent) {
 	switch evt.Type {
 	case "order.created":
 		for _, item := range evt.Payload.Items {
-			if _, err := c.store.Reserve(evt.OrderID, item.SKU, item.Quantity, 30*time.Minute); err != nil {
+			if _, err := c.store.Reserve(ctx, evt.OrderID, item.SKU, item.Quantity, 30*time.Minute); err != nil {
 				log.Printf("events: reservation failed for order %s sku %s: %v",
 					evt.OrderID, item.SKU, err)
 			}

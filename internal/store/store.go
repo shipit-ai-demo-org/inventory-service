@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -50,7 +51,21 @@ func New() *Store {
 	}
 }
 
-func (s *Store) GetStock(sku string) (StockRecord, error) {
+// checkCtx aborts an operation whose caller has already given up (request
+// timeout, client disconnect, consumer shutdown). All store operations take a
+// context so deadlines propagate end-to-end today and slot straight into the
+// planned Postgres-backed store, where these become real query timeouts.
+func checkCtx(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) GetStock(ctx context.Context, sku string) (StockRecord, error) {
+	if err := checkCtx(ctx); err != nil {
+		return StockRecord{}, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	rec, ok := s.stock[sku]
@@ -60,7 +75,10 @@ func (s *Store) GetStock(sku string) (StockRecord, error) {
 	return *rec, nil
 }
 
-func (s *Store) UpsertStock(sku, warehouse string, onHand int) StockRecord {
+func (s *Store) UpsertStock(ctx context.Context, sku, warehouse string, onHand int) (StockRecord, error) {
+	if err := checkCtx(ctx); err != nil {
+		return StockRecord{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.stock[sku]
@@ -71,10 +89,13 @@ func (s *Store) UpsertStock(sku, warehouse string, onHand int) StockRecord {
 	rec.OnHand = onHand
 	rec.Warehouse = warehouse
 	rec.UpdatedAt = time.Now().UTC()
-	return *rec
+	return *rec, nil
 }
 
-func (s *Store) Reserve(orderID, sku string, qty int, ttl time.Duration) (Reservation, error) {
+func (s *Store) Reserve(ctx context.Context, orderID, sku string, qty int, ttl time.Duration) (Reservation, error) {
+	if err := checkCtx(ctx); err != nil {
+		return Reservation{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -106,7 +127,10 @@ func (s *Store) Reserve(orderID, sku string, qty int, ttl time.Duration) (Reserv
 	return *res, nil
 }
 
-func (s *Store) Release(reservationID string) error {
+func (s *Store) Release(ctx context.Context, reservationID string) error {
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -136,7 +160,10 @@ func (s *Store) sweepExpiredLocked(now time.Time) {
 }
 
 // SetReorderPoint configures the replenishment threshold for a SKU.
-func (s *Store) SetReorderPoint(sku string, point int) error {
+func (s *Store) SetReorderPoint(ctx context.Context, sku string, point int) error {
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, ok := s.stock[sku]
@@ -150,7 +177,10 @@ func (s *Store) SetReorderPoint(sku string, point int) error {
 
 // ReplenishmentCandidates returns SKUs whose available stock has fallen below
 // their reorder point. Consumed by the nightly replenishment planner.
-func (s *Store) ReplenishmentCandidates() []StockRecord {
+func (s *Store) ReplenishmentCandidates(ctx context.Context) ([]StockRecord, error) {
+	if err := checkCtx(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var out []StockRecord
@@ -159,7 +189,7 @@ func (s *Store) ReplenishmentCandidates() []StockRecord {
 			out = append(out, *rec)
 		}
 	}
-	return out
+	return out, nil
 }
 
 func newID() string {

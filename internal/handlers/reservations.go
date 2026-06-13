@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -42,7 +43,9 @@ func (h *ReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ttl = time.Duration(body.TTLSeconds) * time.Second
 	}
 
-	res, err := h.store.Reserve(body.OrderID, body.SKU, body.Quantity, ttl)
+	ctx, cancel := context.WithTimeout(r.Context(), storeTimeout)
+	defer cancel()
+	res, err := h.store.Reserve(ctx, body.OrderID, body.SKU, body.Quantity, ttl)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrUnknownSKU):
@@ -60,7 +63,9 @@ func (h *ReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Release handles DELETE /v1/reservations/{id}.
 func (h *ReservationHandler) Release(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := h.store.Release(id); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), storeTimeout)
+	defer cancel()
+	if err := h.store.Release(ctx, id); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown_reservation"})
 		return
 	}

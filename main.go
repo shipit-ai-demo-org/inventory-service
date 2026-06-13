@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/shipit-ai-demo-org/inventory-service/internal/events"
 	"github.com/shipit-ai-demo-org/inventory-service/internal/handlers"
@@ -16,6 +17,16 @@ func main() {
 
 	consumer := events.NewConsumer(st, envOr("BROKER_BRIDGE_URL", "http://broker-bridge.cargocloud.internal"))
 	go consumer.Run(context.Background())
+
+	sweepInterval := store.DefaultSweepInterval
+	if v := os.Getenv("RESERVATION_SWEEP_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			log.Fatalf("invalid RESERVATION_SWEEP_INTERVAL %q: %v", v, err)
+		}
+		sweepInterval = d
+	}
+	go store.NewSweeper(st, sweepInterval).Run(context.Background())
 	stockHandler := handlers.NewStockHandler(st)
 	reservationHandler := handlers.NewReservationHandler(st)
 
